@@ -56,7 +56,7 @@ npm run dev -- --port 5178
 真实导入入口已替代固定演示页。AI 模式：上传图片 → 识别正文与原有四选一题 → 家长校对 → 保留原题 / 补充新题 / 只生成新题 → 检查答案、依据与逐句译文 → 确认保存。
 
 1. 在阿里云百炼开通模型服务，创建与所用地域一致的 API Key。不要在聊天、前端代码或 Git 中填写密钥。
-2. 将 `.env.example` 复制为 `.env.local`，在本机文件中填写 `DASHSCOPE_API_KEY`。默认使用北京地域兼容接口与 `qwen-vl-plus`，可通过 `QWEN_BASE_URL` / `QWEN_MODEL` 修改；所选模型需支持图片输入和 JSON 输出。
+2. 将 `.env.example` 复制为 `.env.local`，在本机文件中填写 `DASHSCOPE_API_KEY`。默认使用北京地域兼容接口与 `qwen3-vl-flash`，可通过 `QWEN_BASE_URL` / `QWEN_MODEL` 修改；所选模型需支持图片输入和 JSON 输出。
 3. 重启开发服务：`npm run dev -- --port 5178`。前端只读取服务是否配置，不会获得密钥。
 4. 正式部署在 Vercel 中配置同名环境变量，并设置 `AI_ACCESS_CODE`（家庭使用码），随后重新部署。Vite 构建目录为 `dist`，`api/*.mjs` 为服务端函数，仅上传 `dist` 的静态托管不能调用 AI。
 

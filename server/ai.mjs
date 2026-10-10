@@ -14,7 +14,7 @@ export async function callAI(messages,{env=process.env,fetcher=fetch}={}){
  const url=env.QWEN_BASE_URL||'https://dashscope.aliyuncs.com/compatible-mode/v1';
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),65000);
  try{
-  const response=await fetcher(`${url.replace(/\/$/,'')}/chat/completions`,{method:'POST',headers:{Authorization:`Bearer ${env.DASHSCOPE_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({model:env.QWEN_MODEL||'qwen-vl-plus',messages,response_format:{type:'json_object'},temperature:0.2,max_tokens:6000}),signal:controller.signal});
+  const response=await fetcher(`${url.replace(/\/$/,'')}/chat/completions`,{method:'POST',headers:{Authorization:`Bearer ${env.DASHSCOPE_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({model:env.QWEN_MODEL||'qwen3-vl-flash',messages,response_format:{type:'json_object'},temperature:0.2,max_tokens:6000}),signal:controller.signal});
   if(!response.ok)throw new ApiError(response.status===429?'AI 服务繁忙或额度不足，请稍后重试。':'AI 服务调用失败，请检查服务器上的密钥、模型和地域配置。',502);
   const result=await response.json();const content=result.choices?.[0]?.message?.content;
   try{return JSON.parse(content);}catch{throw new ApiError('AI 没有返回有效的结构化结果，请重试。',502);}
@@ -25,7 +25,7 @@ export async function recognizeImage(data,deps){
  if(typeof data.image!=='string'||!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(data.image)||data.image.length>3_000_000)throw new ApiError('图片格式不支持或过大，请重新选择。');
  const out=await callAI([{role:'system',content:system},{role:'user',content:[{type:'text',text:'提取图片中的英文阅读文章和原有四选一选择题。保留正文段落，正文text不包含题目、页眉、姓名、手写批注。原有题目只提取题干和四个选项，不推断答案。无法辨认写[待核对]，不补写。返回 {title:string,text:string,questions:[{text:string,options:[string,string,string,string]}],warnings:string[]}。没有文章或题目时对应为空。'},{type:'image_url',image_url:{url:data.image}}]}],deps);
  if(typeof out.text!=='string'||out.text.length>18000||!Array.isArray(out.questions)||out.questions.length>20||out.questions.some(q=>typeof q.text!=='string'||!Array.isArray(q.options)||q.options.length!==4||q.options.some(o=>typeof o!=='string')))throw new ApiError('识别结果不完整，请换清晰图片重试。',502);
- return {title:typeof out.title==='string'?out.title:'',text:out.text,questions:out.questions.map(q=>({text:q.text,options:q.options})),warnings:Array.isArray(out.warnings)?out.warnings.filter(w=>typeof w==='string'):[]};
+ return {title:typeof out.title==='string'?out.title:'',text:out.text,questions:out.questions.map(q=>({text:q.text.replace(/^\s*\d+[.、)）]\s*/,''),options:q.options.map(o=>o.replace(/^\s*[A-D][.、)）]\s*/,''))})),warnings:Array.isArray(out.warnings)?out.warnings.filter(w=>typeof w==='string'):[]};
 }
 export async function generateReading(data,deps){
  if(typeof data.text!=='string'||data.text.trim().length<50||data.text.length>18000)throw new ApiError('请提供50—18000字符的英文正文。');
@@ -34,7 +34,8 @@ export async function generateReading(data,deps){
  if(!Array.isArray(original)||original.length>20||original.some(q=>typeof q.text!=='string'||!q.text.trim()||!Array.isArray(q.options)||q.options.length!==4||q.options.some(o=>typeof o!=='string'||!o.trim())))throw new ApiError('请补全原题的题干和四个选项。');
  if(data.plan!=='new'&&!original.length)throw new ApiError('没有原题，请选择生成新题。');
  const paragraphs=splitPassage(data.text),expected=(data.plan==='new'?0:original.length)+(data.plan==='original'?0:data.count);
- const result=await callAI([{role:'system',content:system},{role:'user',content:JSON.stringify({task:'根据以下带编号的原文生成阅读练习。保留原题时必须逐字保留题干、选项、顺序。为原题补充参考答案、依据及解析。新增题目至少一半训练原因理解，但原文不支持因果时改为细节题，不编造动机。依据必须是支持答案的原句编号，索引从0开始。各题选项只能有一个正确答案。提示由浅入深，不直接给出答案。提供与英文逐段逐句一一对应的中文译文。不得输出姓名等身份信息。',grade:data.grade,plan:data.plan,newQuestionCount:data.plan==='original'?0:data.count,paragraphs:paragraphs.map((p,pi)=>p.map((text,si)=>({id:`${pi}-${si}`,text}))),originalQuestions:data.plan==='new'?[]:original,output:{questions:[questionShape],translations:[['逐句中文译文']],warnings:['需要家长检查的内容']}})}],deps);
+ const result=await callAI([{role:'system',content:system},{role:'user',content:JSON.stringify({task:'根据以下带编号的原文生成阅读练习。保留原题时必须逐字保留题干、选项、顺序。为原题补充参考答案、依据及解析。新增题目至少一半训练原因理解，原文包含多个明确原因时应充分使用。若原文不支持足够因果题则改为细节题并在warnings说明，不编造动机。选项文本不要包含A/B/C/D编号，平台会自动显示编号。依据必须是支持答案的原句编号，索引从0开始。各题选项只能有一个正确答案。提示由浅入深，不直接给出答案。提供与英文逐段逐句一一对应的中文译文。不得输出姓名等身份信息。',grade:data.grade,plan:data.plan,newQuestionCount:data.plan==='original'?0:data.count,paragraphs:paragraphs.map((p,pi)=>p.map((text,si)=>({id:`${pi}-${si}`,text}))),originalQuestions:data.plan==='new'?[]:original,output:{questions:[questionShape],translations:[['逐句中文译文']],warnings:['需要家长检查的内容']}})}],deps);
+ if(Array.isArray(result.questions))result.questions.forEach((q,i)=>{if((data.plan==='new'||i>=original.length)&&Array.isArray(q.options))q.options=q.options.map(o=>typeof o==='string'?o.replace(/^\s*[A-D][.、)）]\s*/,''):o);});
  const questions=validateQuestions(result.questions,paragraphs,expected);
  questions.forEach((q,i)=>{q.source=data.plan!=='new'&&i<original.length?'original':'generated';});
  if(data.plan!=='new')original.forEach((q,i)=>{if(questions[i].text!==q.text.trim()||questions[i].options.some((o,j)=>o!==q.options[j].trim()))throw new ApiError('AI 修改了原题，请重试；原题应完整保留。',502);questions[i].source='original';});
