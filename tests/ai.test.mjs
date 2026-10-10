@@ -1,0 +1,18 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {generateReading,recognizeImage,validateQuestions,callAI,aiHandler} from '../server/ai.mjs';
+const text='Lily put the seed near the window because it needed sunlight. She watered the seed every day.\nA green sprout appeared. Lily was happy because the seed was growing.';
+const original={text:'Why did Lily put the seed near the window?',options:['It needed sunlight.','It was cold.','She hid it.','It needed a box.']};
+const q={...original,answer:0,evidence:['0-0'],explain:'原文 because 说明种子需要阳光。',hints:['找到花盆的位置。','看 because 后的原因。','用原因检验选项。'],type:'原因理解',source:'original'};
+const input={text,grade:4,count:3,plan:'original',originalQuestions:[original]};
+const result={questions:[q],translations:[['莉莉把种子放在窗边，因为它需要阳光。','她每天给种子浇水。'],['一棵绿色嫩芽出现了。','莉莉很开心，因为种子正在生长。']],warnings:[]};
+const deps=value=>({env:{DASHSCOPE_API_KEY:'test-only'},fetcher:async()=>({ok:true,json:async()=>({choices:[{message:{content:JSON.stringify(value)}}]})})});
+test('preserves original questions and maps evidence and translations',async()=>{const out=await generateReading(input,deps(result));assert.equal(out.questions[0].text,original.text);assert.equal(out.questions[0].source,'original');assert.equal(out.translations[1].length,2);});
+test('rejects fabricated evidence and invalid answer indexes',()=>{assert.throws(()=>validateQuestions([{...q,evidence:['99-0']}],[['a']],1));assert.throws(()=>validateQuestions([{...q,answer:4}],[['a']],1));});
+test('rejects changed original options',async()=>{await assert.rejects(generateReading(input,deps({...result,questions:[{...q,options:['changed',...q.options.slice(1)]}]})),/修改了原题/);});
+test('rejects translations which do not align with sentences',async()=>{await assert.rejects(generateReading(input,deps({...result,translations:[['错位']]})),/不对应/);});
+test('rejects duplicate options and malformed hints',()=>{assert.throws(()=>validateQuestions([{...q,options:['a','a','b','c']}],[['a']],1));assert.throws(()=>validateQuestions([{...q,hints:['one']}],[['a']],1));});
+test('missing credentials produce a clear configuration error',async()=>{await assert.rejects(callAI([],{env:{}}),/尚未配置/);});
+test('provider failures never expose upstream sensitive errors',async()=>{await assert.rejects(callAI([],{env:{DASHSCOPE_API_KEY:'private'},fetcher:async()=>({ok:false,status:401})}),e=>!e.message.includes('private'));});
+test('OCR extracts article and original questions without student answers',async()=>{const out=await recognizeImage({image:'data:image/jpeg;base64,YQ=='},deps({title:'Seed',text,questions:[{...original,answer:3}],warnings:['检查模糊字']}));assert.equal(out.questions[0].answer,undefined);assert.equal(out.questions.length,1);});
+test('production refuses unprotected AI calls before provider usage',async()=>{const prev=process.env.NODE_ENV,code=process.env.AI_ACCESS_CODE;process.env.NODE_ENV='production';delete process.env.AI_ACCESS_CODE;let content='';const res={setHeader(){},end(s){content=s;}};try{await aiHandler({method:'POST',headers:{},body:input},res,'generate');assert.equal(res.statusCode,401);assert.match(content,/使用码/);}finally{if(prev===undefined)delete process.env.NODE_ENV;else process.env.NODE_ENV=prev;if(code!==undefined)process.env.AI_ACCESS_CODE=code;}});

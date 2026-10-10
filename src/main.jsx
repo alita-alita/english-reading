@@ -4,7 +4,7 @@ import {BookOpen,ArrowLeft,ArrowRight,Camera,Upload,Lightbulb,Check,ChevronRight
 import {stories} from './data';
 import './style.css';
 import ArticleNarration from './ArticleNarration';
-import {ImportPrototype as Importer} from './import-prototype';
+import {Importer} from './importer';
 import {Translation,Vocabulary,WordCollector,ClickableWords,translations} from './vocabulary';
 const key='little-reader-v1';
 function load(){const defaults={jobs:[],records:[],words:[],grade:3};try{return {...defaults,...JSON.parse(localStorage.getItem(key))};}catch{return defaults;}}
