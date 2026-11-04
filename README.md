@@ -69,3 +69,9 @@ AI 接口：`GET /api/ai-status`、`POST /api/ai-recognize`、`POST /api/ai-gene
 验证：`npm test` 检查原题保留、非法依据、译文错位、答案范围、服务未配置、上游错误及生产使用码保护。测试使用模拟模型响应，不代表真实 AI 识别或出题质量已通过评测。
 
 官方接口说明：[通义千问视觉理解](https://www.alibabacloud.com/help/en/model-studio/vision)。
+
+## GitHub Pages 部署
+
+仓库 Settings → Pages → Build and deployment → Source 选择 **GitHub Actions**。`.github/workflows/pages.yml` 在 main 更新时执行测试，以 `/english-reading/` 为 base 构建，并仅发布 `dist`。不能直接将源码根目录作为网页发布，否则 `/src/main.jsx` 会返回404。
+
+Pages 只支持静态前端，无法运行 `api/*.mjs`，因此 AI 识别与生成需要另行部署服务端（如 Vercel）。不要将 API Key 写入前端或构建环境中的 `VITE_*` 变量。
